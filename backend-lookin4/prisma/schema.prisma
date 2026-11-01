@@ -1,0 +1,169 @@
+generator client {
+  provider = "prisma-client"
+  // Усередині src, щоб tsc не зсував rootDir і dist/main.js лишався на місці.
+  output   = "../src/generated/prisma"
+  // Nest збирається в CommonJS, а генератор за замовчуванням віддає ESM.
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- Користувачі ----------
+
+model User {
+  id String @id @default(uuid())
+
+  email String @unique
+  // Тільки хеш. Відкритий пароль у базу не потрапляє ніколи.
+  passwordHash String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  companies Company[]
+  cvs       Cv[]
+}
+
+// ---------- Business ----------
+
+/// Значення збігаються з CompanyCategoryFR на фронті.
+enum CompanySize {
+  MICRO
+  SMALL
+  MEDIUM
+  ETI
+  LARGE
+}
+
+model Company {
+  id String @id @default(uuid())
+
+  name        String
+  description String?
+  sector      String?
+  region      String?
+  size        CompanySize?
+  logoUrl     String?
+  foundedOn   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  offres    Offre[]
+  orgCharts OrgChart[]
+
+  // Під фільтри Secteur / Région / Taille
+  @@index([sector])
+  @@index([region])
+  @@index([size])
+}
+
+// ---------- Offre ----------
+
+enum ContractType {
+  CDI
+  CDD
+  STAGE
+  ALTERNANCE
+  FREELANCE
+}
+
+/// Значення збігаються з OffreType на фронті.
+enum OffreType {
+  EMPLOI
+  SERVICE
+  PARTENARIAT
+  APPEL_OFFRE
+}
+
+/// Замінює колишню модель Job: та була лише вакансією,
+/// а тут ще послуги, партнерства й тендери.
+model Offre {
+  id String @id @default(uuid())
+
+  title       String
+  description String?
+  type        OffreType @default(EMPLOI)
+
+  // Заповнюються переважно для type = EMPLOI
+  metier   String?
+  region   String?
+  contract ContractType?
+
+  // id навичок зі словника data/skills.json
+  skills String[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  // Під фільтри Métier / Région / Contrat на сторінці Job
+  @@index([type])
+  @@index([metier])
+  @@index([region])
+  @@index([contract])
+  @@index([companyId])
+}
+
+model Cv {
+  id String @id @default(uuid())
+
+  title String
+  // Досвід, освіта, навички — структура плаває від людини до людини.
+  content Json @default("{}")
+  // Шлях до завантаженого PDF: /files/<uuid>.pdf. Сам файл лежить у user_files.
+  fileUrl String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Один CV на людину: обмеження тримає база, а не лише інтерфейс.
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ---------- Організограма ----------
+
+model OrgChart {
+  id String @id @default(uuid())
+
+  name String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  nodes OrgNode[]
+
+  @@index([companyId])
+}
+
+/// Вузол дерева. parentId = null означає верхівку.
+/// Усю гілку дістає один запит через WITH RECURSIVE.
+model OrgNode {
+  id String @id @default(uuid())
+
+  name      String
+  role      String?
+  telephone String?
+  email     String?
+
+  chartId String
+  chart   OrgChart @relation(fields: [chartId], references: [id], onDelete: Cascade)
+
+  parentId String?
+  parent   OrgNode?  @relation("OrgNodeTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children OrgNode[] @relation("OrgNodeTree")
+
+  @@index([chartId])
+  @@index([parentId])
+}
