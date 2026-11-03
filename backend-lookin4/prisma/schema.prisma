@@ -22,8 +22,10 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  companies Company[]
-  cvs       Cv[]
+  companies  Company[]
+  cvs        Cv[]
+  formations Formation[]
+  products   Product[]
 }
 
 // ---------- Business ----------
@@ -46,6 +48,7 @@ model Company {
   region      String?
   size        CompanySize?
   logoUrl     String?
+  website     String?
   foundedOn   DateTime?
 
   createdAt DateTime @default(now())
@@ -61,6 +64,61 @@ model Company {
   @@index([sector])
   @@index([region])
   @@index([size])
+}
+
+// ---------- Market ----------
+
+enum ProductCategory {
+  MATERIEL
+  MACHINES
+  OUTILLAGE
+  PIECES
+  LOGICIELS
+  SERVICES
+  AUTRE
+}
+
+model Product {
+  id String @id @default(uuid())
+
+  title       String
+  description String?
+  // Ціна в центах, щоб не мати помилок округлення.
+  priceCents  Int
+  category    ProductCategory?
+  imageUrl    String
+  // Куди веде «Acheter». Без нього кнопка пише продавцю.
+  url         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  // Під фільтр і сортування на сторінці Market
+  @@index([category])
+  @@index([priceCents])
+}
+
+// ---------- Formation ----------
+
+model Formation {
+  id String @id @default(uuid())
+
+  title       String
+  description String?
+  imageUrl    String
+  url         String?
+
+  // id навичок зі словника data/skills.json
+  skills String[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 }
 
 // ---------- Offre ----------

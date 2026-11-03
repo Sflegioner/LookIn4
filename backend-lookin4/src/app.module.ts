@@ -9,6 +9,8 @@ import { OffresModule } from './offres/offres.module';
 import { CvsModule } from './cvs/cvs.module';
 import { SkillsModule } from './skills/skills.module';
 import { UploadsModule } from './uploads/uploads.module';
+import { FormationsModule } from './formations/formations.module';
+import { ProductsModule } from './products/products.module';
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { UploadsModule } from './uploads/uploads.module';
     CvsModule,
     SkillsModule,
     UploadsModule,
+    FormationsModule,
+    ProductsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

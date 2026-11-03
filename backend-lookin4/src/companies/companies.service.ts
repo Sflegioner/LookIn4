@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -92,6 +93,7 @@ export class CompaniesService {
           region: dto.region || null,
           size: dto.size ?? null,
           logoUrl: dto.logoUrl || null,
+          website: dto.website || null,
           foundedOn: dto.foundedOn ? new Date(dto.foundedOn) : null,
           ownerId: owner.id,
           // Пропозиції — простий список, тому вкладеного create вистачає.
@@ -125,6 +127,96 @@ export class CompaniesService {
     });
   }
 
+  /** Міняти й видаляти компанію може лише її власник. */
+  private async assertOwner(id: string, ownerId?: string) {
+    const company = await this.prisma.company.findUnique({
+      where: { id },
+      select: { ownerId: true },
+    });
+    if (!company) throw new NotFoundException('Entreprise introuvable.');
+    if (company.ownerId !== ownerId) {
+      throw new ForbiddenException("Cette entreprise ne vous appartient pas.");
+    }
+  }
+
+  async update(id: string, dto: CreateCompanyDto) {
+    await this.assertOwner(id, dto.ownerId);
+
+    // Транзакція: або все оновлено, або нічого.
+    return this.prisma.$transaction(async (tx) => {
+      const company = await tx.company.update({
+        where: { id },
+        data: {
+          name: dto.name,
+          description: dto.description || null,
+          // У формі цих двох полів немає: undefined лишає те, що в базі.
+          sector: dto.sector,
+          region: dto.region,
+          size: dto.size ?? null,
+          logoUrl: dto.logoUrl || null,
+          website: dto.website || null,
+          foundedOn: dto.foundedOn ? new Date(dto.foundedOn) : null,
+        },
+        select: { id: true, name: true, createdAt: true },
+      });
+
+      if (dto.offres) {
+        const existing = await tx.offre.findMany({
+          where: { companyId: id },
+          select: { id: true },
+        });
+        const known = new Set(existing.map((offre) => offre.id));
+        const keep = dto.offres
+          .map((offre) => offre.id)
+          .filter((offreId): offreId is string => !!offreId && known.has(offreId));
+
+        await tx.offre.deleteMany({
+          where: { companyId: id, id: { notIn: keep } },
+        });
+
+        for (const offre of dto.offres) {
+          // metier / region / contract форма не показує, тож їх не чіпаємо.
+          const data = {
+            title: offre.title,
+            description: offre.description || null,
+            type: offre.type ?? 'EMPLOI',
+            skills: this.skills.keepKnown(offre.skills ?? []),
+          };
+
+          if (offre.id && known.has(offre.id)) {
+            await tx.offre.update({ where: { id: offre.id }, data });
+          } else {
+            await tx.offre.create({ data: { ...data, companyId: id } });
+          }
+        }
+      }
+
+      if (dto.nodes) {
+        // Дерево простіше зібрати заново: на вузли ніхто інший не посилається.
+        await tx.orgChart.deleteMany({ where: { companyId: id } });
+
+        if (dto.nodes.length) {
+          const chart = await tx.orgChart.create({
+            data: { name: dto.name, companyId: id },
+            select: { id: true },
+          });
+          await insertNodes(tx, chart.id, null, dto.nodes);
+        }
+      }
+
+      return company;
+    });
+  }
+
+  async remove(id: string, ownerId?: string) {
+    await this.assertOwner(id, ownerId);
+
+    return this.prisma.company.delete({
+      where: { id },
+      select: { id: true, name: true },
+    });
+  }
+
   async findOne(id: string) {
     const company = await this.prisma.company.findUnique({
       where: { id },
@@ -136,6 +228,7 @@ export class CompaniesService {
         region: true,
         size: true,
         logoUrl: true,
+        website: true,
         foundedOn: true,
         createdAt: true,
         owner: { select: { email: true } },
@@ -149,6 +242,7 @@ export class CompaniesService {
             contract: true,
             metier: true,
             region: true,
+            skills: true,
           },
         },
         orgCharts: {
@@ -184,11 +278,14 @@ export class CompaniesService {
     };
   }
 
-  findAll(search?: string) {
+  findAll(search?: string, ownerId?: string) {
     return this.prisma.company.findMany({
-      where: search
-        ? { name: { contains: search, mode: 'insensitive' } }
-        : undefined,
+      where: {
+        ...(search
+          ? { name: { contains: search, mode: 'insensitive' as const } }
+          : {}),
+        ...(ownerId ? { ownerId } : {}),
+      },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,

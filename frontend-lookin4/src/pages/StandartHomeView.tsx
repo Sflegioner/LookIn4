@@ -5,10 +5,17 @@ import Image from 'next/image';
 import BusinessPage from './BusinessPage';
 import JobPage from './JobPage';
 import AuthPage from './AuthPage';
-import CreateOrganigramPage from '../services/CreateOrganigram';
+import CreateOrganigramPage, { EditCompany } from '../services/CreateOrganigram';
 import CompanyPage from './CompanyPage';
 import OffrePage from './OffrePage';
 import CVPage from './CVPage';
+import LearnPage from './LearnPage';
+import FormationPage from './FormationPage';
+import MarketPage from './MarketPage';
+import AccountPage, { type EditTarget } from './AccountPage';
+import ProductPage from './ProductPage';
+import CreateProduct from '../services/CreateProduct';
+import CreateFormation from '../services/CreateFormation';
 import type { Session } from '../session';
 
 type Props = {
@@ -33,6 +40,12 @@ export default function StandartHomeView({
   // null — форму не показуємо; рядок — показуємо з поясненням, чому.
   const [authReason, setAuthReason] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [creatingFormation, setCreatingFormation] = useState(false);
+  const [openFormationId, setOpenFormationId] = useState<string | null>(null);
+  const [creatingProduct, setCreatingProduct] = useState(false);
+  const [showAccount, setShowAccount] = useState(false);
+  const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
+  const [openProductId, setOpenProductId] = useState<string | null>(null);
   const [openCompanyId, setOpenCompanyId] = useState<string | null>(null);
   const [openOffreId, setOpenOffreId] = useState<string | null>(null);
   // Компанія, зі сторінки якої відкрили offre — щоб «Retour» вернув саме туди.
@@ -40,6 +53,32 @@ export default function StandartHomeView({
   const [showCv, setShowCv] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const showAuth = authReason !== null;
+
+  /** Закриває все відкрите: вкладка чи кабінет завжди стартують із чистого стану. */
+  function closeAll() {
+    setAuthReason(null);
+    setCreating(false);
+    setCreatingFormation(false);
+    setOpenFormationId(null);
+    setCreatingProduct(false);
+    setOpenProductId(null);
+    setOpenCompanyId(null);
+    setOpenOffreId(null);
+    setOffreOrigin(null);
+    setShowCv(false);
+    setShowAccount(false);
+    setEditTarget(null);
+  }
+
+  function openAccount() {
+    closeAll();
+    setShowAccount(true);
+  }
+
+  function logout() {
+    closeAll();
+    onLogout();
+  }
 
   /** Дія лише для залогінених: інакше веде на форму входу. */
   function requireAuth(reason: string, action: () => void) {
@@ -54,6 +93,35 @@ export default function StandartHomeView({
     onLogin(session);
     setAuthReason(null);
   }
+
+  // Той самий порядок, що й у рендері нижче: кнопка закриває те, що зараз видно.
+  const goBack = showAuth
+    ? () => setAuthReason(null)
+    : editTarget
+      ? () => setEditTarget(null)
+      : showCv && session
+        ? () => setShowCv(false)
+        : showAccount
+          ? () => setShowAccount(false)
+          : creating
+            ? () => setCreating(false)
+            : creatingFormation
+              ? () => setCreatingFormation(false)
+              : openFormationId
+                ? () => setOpenFormationId(null)
+                : creatingProduct
+                  ? () => setCreatingProduct(false)
+                  : openProductId
+                    ? () => setOpenProductId(null)
+                    : openCompanyId
+                      ? () => setOpenCompanyId(null)
+                      : openOffreId
+                        ? () => {
+                            setOpenOffreId(null);
+                            setOpenCompanyId(offreOrigin);
+                            setOffreOrigin(null);
+                          }
+                        : null;
 
   return (
     <div className="min-h-screen">
@@ -74,12 +142,7 @@ export default function StandartHomeView({
                 <button
                   onClick={() => {
                     onSelect(option);
-                    setAuthReason(null);
-                    setCreating(false);
-                    setOpenCompanyId(null);
-                    setOpenOffreId(null);
-                    setOffreOrigin(null);
-                    setShowCv(false);
+                    closeAll();
                   }}
                   aria-current={option === choice ? 'page' : undefined}
                   className={`rounded-md px-3 py-2 text-sm whitespace-nowrap transition-opacity ${
@@ -97,17 +160,27 @@ export default function StandartHomeView({
           <div className="ml-auto flex shrink-0 items-center gap-3">
             {user ? (
               <>
-                <span className="hidden max-w-40 truncate text-sm opacity-70 sm:block">
-                  {user}
-                </span>
                 <button
                   type="button"
-                  onClick={onLogout}
+                  onClick={openAccount}
+                  className="hidden max-w-40 truncate text-sm opacity-70 transition-opacity hover:opacity-100 sm:block"
+                >
+                  {user}
+                </button>
+                <button
+                  type="button"
+                  onClick={logout}
                   className="rounded-full border border-[rgb(128_128_128/0.3)] px-4 py-1.5 text-sm transition-colors hover:bg-[rgb(128_128_128/0.1)]"
                 >
                   Se déconnecter
                 </button>
-                <span aria-hidden className="rounded-full p-1">
+                <button
+                  type="button"
+                  onClick={openAccount}
+                  aria-label="Mon compte"
+                  title="Mon compte"
+                  className="rounded-full p-1 transition-colors hover:bg-[rgb(128_128_128/0.15)]"
+                >
                   <Image
                     src="/icons/user-icon-profile.webp"
                     alt=""
@@ -115,7 +188,7 @@ export default function StandartHomeView({
                     height={30}
                     className="dark:invert"
                   />
-                </span>
+                </button>
               </>
             ) : (
               <button
@@ -138,26 +211,76 @@ export default function StandartHomeView({
       </nav>
 
       <main className="mx-auto max-w-6xl px-6 py-10">
+        {goBack && (
+          <button
+            type="button"
+            onClick={goBack}
+            className="sticky top-20 z-10 mb-6 flex items-center gap-2 rounded-full border border-[rgb(128_128_128/0.3)] bg-background px-4 py-1.5 text-sm transition-colors hover:border-[rgb(128_128_128/0.7)]"
+          >
+            <span aria-hidden>←</span>
+            Retour
+          </button>
+        )}
+
         {showAuth ? (
           <AuthPage
             onAuth={handleAuth}
-            onCancel={() => setAuthReason(null)}
             reason={authReason || undefined}
+          />
+        ) : editTarget && session ? (
+          editTarget.kind === 'company' ? (
+            <EditCompany
+              companyId={editTarget.id}
+              session={session}
+              onSaved={() => setEditTarget(null)}
+            />
+          ) : editTarget.kind === 'formation' ? (
+            <CreateFormation
+              session={session}
+              initial={editTarget.formation}
+              onSaved={() => setEditTarget(null)}
+            />
+          ) : (
+            <CreateProduct
+              session={session}
+              initial={editTarget.product}
+              onSaved={() => setEditTarget(null)}
+            />
+          )
+        ) : showCv && session ? (
+          <CVPage session={session} />
+        ) : showAccount && session ? (
+          <AccountPage
+            session={session}
+            onEdit={setEditTarget}
+            onOpenCv={() => setShowCv(true)}
           />
         ) : creating ? (
           <CreateOrganigramPage
             session={session}
-            onCancel={() => setCreating(false)}
             onSaved={() => {
               setCreating(false);
               // Змушує BusinessPage перечитати список
               setReloadKey((k) => k + 1);
             }}
           />
+        ) : creatingFormation ? (
+          <CreateFormation
+            session={session}
+            onSaved={() => setCreatingFormation(false)}
+          />
+        ) : openFormationId ? (
+          <FormationPage formationId={openFormationId} />
+        ) : creatingProduct ? (
+          <CreateProduct
+            session={session}
+            onSaved={() => setCreatingProduct(false)}
+          />
+        ) : openProductId ? (
+          <ProductPage productId={openProductId} />
         ) : openCompanyId ? (
           <CompanyPage
             companyId={openCompanyId}
-            onBack={() => setOpenCompanyId(null)}
             onOpenOffre={(id) => {
               setOffreOrigin(openCompanyId);
               setOpenCompanyId(null);
@@ -168,19 +291,12 @@ export default function StandartHomeView({
           <OffrePage
             offreId={openOffreId}
             session={session}
-            onBack={() => {
-              setOpenOffreId(null);
-              setOpenCompanyId(offreOrigin);
-              setOffreOrigin(null);
-            }}
             onOpenCompany={(id) => {
               setOpenOffreId(null);
               setOffreOrigin(null);
               setOpenCompanyId(id);
             }}
           />
-        ) : showCv && session ? (
-          <CVPage session={session} onBack={() => setShowCv(false)} />
         ) : choice === 'Business' ? (
           <BusinessPage
             reloadKey={reloadKey}
@@ -188,6 +304,24 @@ export default function StandartHomeView({
             onCreate={() =>
               requireAuth('Connectez-vous pour créer un organigramme.', () =>
                 setCreating(true),
+              )
+            }
+          />
+        ) : choice === 'Market' ? (
+          <MarketPage
+            onOpen={setOpenProductId}
+            onCreate={() =>
+              requireAuth('Connectez-vous pour vendre un produit.', () =>
+                setCreatingProduct(true),
+              )
+            }
+          />
+        ) : choice === 'Learn' ? (
+          <LearnPage
+            onOpen={setOpenFormationId}
+            onCreate={() =>
+              requireAuth('Connectez-vous pour créer une promo.', () =>
+                setCreatingFormation(true),
               )
             }
           />

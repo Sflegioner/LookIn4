@@ -7,6 +7,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUrl,
   MaxLength,
   ValidateNested,
 } from 'class-validator';
@@ -17,6 +18,11 @@ import {
 } from '../../generated/prisma/client';
 
 export class OffreDto {
+  // Є лише в наявних пропозицій — так оновлення зберігає їхні id.
+  @IsOptional()
+  @IsString()
+  id?: string;
+
   @IsString()
   @IsNotEmpty({ message: "Le titre de l'offre est requis." })
   @MaxLength(160)
@@ -104,6 +110,15 @@ export class CreateCompanyDto {
   @IsOptional()
   @IsString()
   logoUrl?: string;
+
+  // Лише http(s): значення потрапляє в href, тож javascript: сюди не пускаємо.
+  @IsOptional()
+  @IsUrl(
+    { protocols: ['http', 'https'], require_protocol: true },
+    { message: 'Adresse du site invalide.' },
+  )
+  @MaxLength(2048)
+  website?: string;
 
   @IsOptional()
   @IsDateString({}, { message: 'Date de création invalide.' })

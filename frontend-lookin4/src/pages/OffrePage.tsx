@@ -16,12 +16,10 @@ const frDate = (iso: string) => new Date(iso).toLocaleDateString('fr-FR');
 
 export default function OffrePage({
   offreId,
-  onBack,
   onOpenCompany,
   session,
 }: {
   offreId: string;
-  onBack: () => void;
   onOpenCompany: (companyId: string) => void;
   session: Session | null;
 }) {
@@ -62,13 +60,6 @@ export default function OffrePage({
     return (
       <section className="rounded-2xl border border-[rgb(128_128_128/0.25)] p-6">
         <p className="text-sm text-red-600">{error}</p>
-        <button
-          type="button"
-          onClick={onBack}
-          className="mt-4 text-sm underline underline-offset-4 opacity-70"
-        >
-          Retour
-        </button>
       </section>
     );
   }
@@ -94,19 +85,9 @@ export default function OffrePage({
     <div className="flex flex-col gap-6">
       {/* Шапка */}
       <section className="rounded-2xl border border-[rgb(128_128_128/0.25)] p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h2 className="font-playfair text-3xl">{offre.title}</h2>
-            <p className="mt-1 opacity-70">{offre.company.name}</p>
-          </div>
-
-          <button
-            type="button"
-            onClick={onBack}
-            className="text-sm opacity-70 transition-opacity hover:opacity-100"
-          >
-            Retour
-          </button>
+        <div className="min-w-0">
+          <h2 className="font-playfair text-3xl">{offre.title}</h2>
+          <p className="mt-1 opacity-70">{offre.company.name}</p>
         </div>
 
         <dl className="mt-6 grid gap-x-8 gap-y-3 border-t border-[rgb(128_128_128/0.2)] pt-5 sm:grid-cols-2 lg:grid-cols-3">

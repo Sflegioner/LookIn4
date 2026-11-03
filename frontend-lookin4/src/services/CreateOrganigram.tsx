@@ -1,13 +1,23 @@
 'use client';
 
-import { useState, type ChangeEvent } from 'react';
+import { useEffect, useState, type ChangeEvent } from 'react';
 import {
   createCompany,
+  updateCompany,
+  getCompany,
   uploadFile,
+  fileUrl,
+  type CompanyDetail,
+  type CompanyNode,
   type NewOrgNode,
   type Session,
 } from '../session';
-import OffreService, { offreTypeKey, type Offre } from './OffreService';
+import OffreService, {
+  offreTypeKey,
+  offreTypeLabel,
+  OffreType,
+  type Offre,
+} from './OffreService';
 
 export enum CompanyCategoryFR {
   MICRO = 'Microentreprise (TPE)',
@@ -32,6 +42,7 @@ export type Entreprise = {
   description: string;
   dateOfCreation: string;
   category: CompanyCategoryFR | '';
+  website: string;
 };
 
 const EMPTY_COMPANY: Entreprise = {
@@ -40,7 +51,15 @@ const EMPTY_COMPANY: Entreprise = {
   description: '',
   dateOfCreation: '',
   category: '',
+  website: '',
 };
+
+/** «acme.fr» теж годиться: протокол дописуємо, решту перевіряє бекенд. */
+export function normalizeWebsite(raw: string) {
+  const value = raw.trim();
+  if (!value) return undefined;
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+}
 
 const emptyPerson = (): Person => ({
   id: crypto.randomUUID(),
@@ -350,20 +369,94 @@ function toPayload(people: Person[]): NewOrgNode[] {
     }));
 }
 
-export default function CreateOrganigramPage({
+/** Полотно чекає Person — у вузлів з бекенду null замість порожніх рядків. */
+export function toPeople(nodes: CompanyNode[]): Person[] {
+  return nodes.map((node) => ({
+    id: node.id,
+    name: node.name,
+    role: node.role ?? '',
+    telephone: node.telephone ?? '',
+    email: node.email ?? '',
+    children: toPeople(node.children),
+  }));
+}
+
+function toEntreprise(company: CompanyDetail): Entreprise {
+  return {
+    logo: fileUrl(company.logoUrl),
+    name: company.name,
+    description: company.description ?? '',
+    dateOfCreation: company.foundedOn?.slice(0, 10) ?? '',
+    category: company.size
+      ? ((CompanyCategoryFR as Record<string, CompanyCategoryFR>)[company.size] ??
+        '')
+      : '',
+    website: company.website ?? '',
+  };
+}
+
+/** Спершу вантажить компанію, потім показує ту саму форму, вже заповнену. */
+export function EditCompany({
+  companyId,
   session,
-  onCancel,
   onSaved,
 }: {
+  companyId: string;
   session: Session | null;
-  onCancel?: () => void;
-  onSaved?: () => void;
+  onSaved: () => void;
 }) {
-  const [company, setCompany] = useState<Entreprise>(EMPTY_COMPANY);
-  const [people, setPeople] = useState<Person[]>([]);
+  const [company, setCompany] = useState<CompanyDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getCompany(companyId)
+      .then((data) => !cancelled && setCompany(data))
+      .catch((e: Error) => !cancelled && setError(e.message));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId]);
+
+  if (error) return <p className="text-sm text-red-600">{error}</p>;
+  if (!company) return <p className="text-sm opacity-60">Chargement…</p>;
+
+  return (
+    <CreateOrganigramPage session={session} onSaved={onSaved} initial={company} />
+  );
+}
+
+export default function CreateOrganigramPage({
+  session,
+  onSaved,
+  initial,
+}: {
+  session: Session | null;
+  onSaved?: () => void;
+  /** Є лише під час редагування. */
+  initial?: CompanyDetail;
+}) {
+  const [company, setCompany] = useState<Entreprise>(
+    initial ? toEntreprise(initial) : EMPTY_COMPANY,
+  );
+  const [people, setPeople] = useState<Person[]>(
+    initial ? initial.orgCharts.flatMap((chart) => toPeople(chart.nodes)) : [],
+  );
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [offres, setOffres] = useState<Offre[]>([]);
+  const [offres, setOffres] = useState<Offre[]>(
+    initial
+      ? initial.offres.map((offre) => ({
+          id: offre.id,
+          title: offre.title,
+          description: offre.description ?? '',
+          type: offreTypeLabel(offre.type) as OffreType,
+          skills: offre.skills,
+        }))
+      : [],
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -397,25 +490,33 @@ export default function CreateOrganigramPage({
     setSaving(true);
     try {
       // Спершу файл, щоб отримати шлях, потім сама компанія.
-      const logoUrl = logoFile ? (await uploadFile(logoFile)).url : undefined;
+      const logoUrl = logoFile
+        ? (await uploadFile(logoFile)).url
+        : (initial?.logoUrl ?? undefined);
 
-      await createCompany({
+      const body = {
         name: company.name.trim(),
         description: company.description.trim() || undefined,
         size: categoryKey(company.category),
         foundedOn: company.dateOfCreation || undefined,
         logoUrl,
+        website: normalizeWebsite(company.website),
         ownerId: session.id,
         nodes: toPayload(people),
         offres: offres
           .filter((o) => o.title.trim())
           .map((o) => ({
+            // У нових пропозицій id теж є, але бекенд таких не знає й створить запис.
+            id: initial ? o.id : undefined,
             title: o.title.trim(),
             description: o.description.trim() || undefined,
             type: offreTypeKey(o.type),
             skills: o.skills,
           })),
-      });
+      };
+
+      if (initial) await updateCompany(initial.id, body);
+      else await createCompany(body);
 
       onSaved?.();
     } catch (e) {
@@ -449,19 +550,9 @@ export default function CreateOrganigramPage({
     <div className="flex flex-col gap-6">
       {/* Основний блок — компанія */}
       <section className="rounded-2xl border border-[rgb(128_128_128/0.25)] p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <h2 className="font-playfair text-2xl">Créer un organigramme</h2>
-
-          {onCancel && (
-            <button
-              type="button"
-              onClick={onCancel}
-              className="text-sm opacity-70 transition-opacity hover:opacity-100"
-            >
-              Retour
-            </button>
-          )}
-        </div>
+        <h2 className="font-playfair text-2xl">
+          {initial ? "Modifier l'entreprise" : 'Créer un organigramme'}
+        </h2>
 
         <div className="mt-6 flex flex-wrap gap-6">
           {/* Лого */}
@@ -535,6 +626,19 @@ export default function CreateOrganigramPage({
                   </option>
                 ))}
               </select>
+            </label>
+
+            <label className="flex flex-col gap-1.5 sm:col-span-2">
+              <span className="text-sm opacity-70">Site web</span>
+              <input
+                inputMode="url"
+                placeholder="https://www.exemple.fr"
+                value={company.website}
+                onChange={(e) =>
+                  setCompany({ ...company, website: e.target.value })
+                }
+                className={inputClass}
+              />
             </label>
 
             <label className="flex flex-col gap-1.5 sm:col-span-2">

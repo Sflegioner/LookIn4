@@ -5,9 +5,8 @@ import {
   getCompany,
   fileUrl,
   type CompanyDetail,
-  type CompanyNode,
 } from '../session';
-import { OrgCanvas, type Person } from '../services/CreateOrganigram';
+import { OrgCanvas, toPeople, type Person } from '../services/CreateOrganigram';
 import { offreTypeLabel } from '../services/OffreService';
 
 const SIZE_LABELS: Record<string, string> = {
@@ -17,18 +16,6 @@ const SIZE_LABELS: Record<string, string> = {
   ETI: 'Entreprise de Taille Intermédiaire',
   LARGE: 'Grande entreprise',
 };
-
-/** Полотно чекає Person — у вузлів з бекенду null замість порожніх рядків. */
-function toPeople(nodes: CompanyNode[]): Person[] {
-  return nodes.map((node) => ({
-    id: node.id,
-    name: node.name,
-    role: node.role ?? '',
-    telephone: node.telephone ?? '',
-    email: node.email ?? '',
-    children: toPeople(node.children),
-  }));
-}
 
 function findNode(nodes: Person[], id: string): Person | null {
   for (const node of nodes) {
@@ -44,11 +31,9 @@ const frDate = (iso: string | null) =>
 
 export default function CompanyPage({
   companyId,
-  onBack,
   onOpenOffre,
 }: {
   companyId: string;
-  onBack: () => void;
   onOpenOffre: (offreId: string) => void;
 }) {
   const [company, setCompany] = useState<CompanyDetail | null>(null);
@@ -71,13 +56,6 @@ export default function CompanyPage({
     return (
       <section className="rounded-2xl border border-[rgb(128_128_128/0.25)] p-6">
         <p className="text-sm text-red-600">{error}</p>
-        <button
-          type="button"
-          onClick={onBack}
-          className="mt-4 text-sm underline underline-offset-4 opacity-70"
-        >
-          Retour
-        </button>
       </section>
     );
   }
@@ -87,6 +65,11 @@ export default function CompanyPage({
   }
 
   const logo = fileUrl(company.logoUrl);
+  // React не блокує javascript: у href, тож показуємо лише http(s).
+  const website =
+    company.website && /^https?:\/\//i.test(company.website)
+      ? company.website
+      : null;
   const people = company.orgCharts.flatMap((chart) => toPeople(chart.nodes));
   const selected = selectedId ? findNode(people, selectedId) : null;
 
@@ -124,13 +107,16 @@ export default function CompanyPage({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onBack}
-            className="text-sm opacity-70 transition-opacity hover:opacity-100"
-          >
-            Retour
-          </button>
+          {website && (
+            <a
+              href={website}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 rounded-full border border-[rgb(128_128_128/0.3)] px-4 py-1.5 text-sm transition-colors hover:bg-[rgb(128_128_128/0.1)]"
+            >
+              Visiter le site
+            </a>
+          )}
         </div>
 
         <dl className="mt-6 grid gap-x-8 gap-y-3 border-t border-[rgb(128_128_128/0.2)] pt-5 sm:grid-cols-2 lg:grid-cols-3">

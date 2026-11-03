@@ -6,7 +6,6 @@ import { login, register, type Session } from '../session';
 type Props = {
   /** Викликається після успішного входу або реєстрації. */
   onAuth: (session: Session) => void;
-  onCancel: () => void;
   /** Текст-пояснення, якщо сюди привела спроба захищеної дії. */
   reason?: string;
 };
@@ -14,7 +13,7 @@ type Props = {
 const inputClass =
   'w-full rounded-lg border border-[rgb(128_128_128/0.3)] bg-transparent px-4 py-2.5 text-sm';
 
-export default function AuthPage({ onAuth, onCancel, reason }: Props) {
+export default function AuthPage({ onAuth, reason }: Props) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -118,14 +117,6 @@ export default function AuthPage({ onAuth, onCancel, reason }: Props) {
           className="underline underline-offset-4 opacity-70 transition-opacity hover:opacity-100"
         >
           {isRegister ? 'Déjà un compte ?' : 'Créer un compte'}
-        </button>
-
-        <button
-          type="button"
-          onClick={onCancel}
-          className="opacity-70 transition-opacity hover:opacity-100"
-        >
-          Retour
         </button>
       </div>
     </section>

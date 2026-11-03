@@ -48,11 +48,153 @@ const postJson = <T>(path: string, body: unknown) =>
     body: JSON.stringify(body),
   });
 
+const putJson = <T>(path: string, body: unknown) =>
+  request<T>(path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+const deleteOwned = (path: string, ownerId: string) =>
+  request<{ id: string }>(
+    `${path}?ownerId=${encodeURIComponent(ownerId)}`,
+    { method: 'DELETE' },
+  );
+
 export const login = (email: string, password: string) =>
   postJson<Session>('/auth/login', { email, password });
 
 export const register = (email: string, password: string) =>
   postJson<Session>('/auth/register', { email, password });
+
+// ---------- маркет ----------
+
+export const PRODUCT_CATEGORIES: Record<string, string> = {
+  MATERIEL: 'Matériel',
+  MACHINES: 'Machines',
+  OUTILLAGE: 'Outillage',
+  PIECES: 'Pièces détachées',
+  LOGICIELS: 'Logiciels',
+  SERVICES: 'Services',
+  AUTRE: 'Autre',
+};
+
+export type Product = {
+  id: string;
+  title: string;
+  description: string | null;
+  priceCents: number;
+  category: string | null;
+  imageUrl: string;
+  url: string | null;
+  createdAt: string;
+  owner: { email: string };
+};
+
+export type NewProduct = {
+  title: string;
+  description?: string;
+  priceCents: number;
+  category?: string;
+  imageUrl: string;
+  url?: string;
+  ownerId: string;
+};
+
+export type ProductFilters = {
+  search?: string;
+  category?: string;
+  sort?: string;
+  ownerId?: string;
+};
+
+export function listProducts(filters: ProductFilters = {}) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) params.set(key, value);
+  }
+  const qs = params.toString();
+  return request<Product[]>(`/products${qs ? `?${qs}` : ''}`);
+}
+
+export const getProduct = (id: string) =>
+  request<Product>(`/products/${id}`);
+
+export const createProduct = (body: NewProduct) =>
+  postJson<Product>('/products', body);
+
+export const updateProduct = (id: string, body: NewProduct) =>
+  putJson<Product>(`/products/${id}`, body);
+
+export const deleteProduct = (id: string, ownerId: string) =>
+  deleteOwned(`/products/${id}`, ownerId);
+
+export const formatPrice = (cents: number) =>
+  new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(
+    cents / 100,
+  );
+
+/**
+ * Куди веде «Acheter»: посилання продавця або лист йому.
+ * React не блокує javascript: у href, тож приймаємо лише http(s).
+ */
+export function buyHref(product: Product) {
+  if (product.url && /^https?:\/\//i.test(product.url)) return product.url;
+
+  const subject = encodeURIComponent(`Achat : ${product.title}`);
+  return `mailto:${product.owner.email}?subject=${subject}`;
+}
+
+// ---------- формації ----------
+
+export type Formation = {
+  id: string;
+  title: string;
+  description: string | null;
+  imageUrl: string;
+  url: string | null;
+  skills: string[];
+  createdAt: string;
+};
+
+export type FormationDetail = Formation & { owner: { email: string } };
+
+export type FormationFilters = {
+  search?: string;
+  category?: string;
+  skill?: string;
+  ownerId?: string;
+};
+
+export type NewFormation = {
+  title: string;
+  description?: string;
+  imageUrl: string;
+  url?: string;
+  skills?: string[];
+  ownerId: string;
+};
+
+export function listFormations(filters: FormationFilters = {}) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) params.set(key, value);
+  }
+  const qs = params.toString();
+  return request<Formation[]>(`/formations${qs ? `?${qs}` : ''}`);
+}
+
+export const getFormation = (id: string) =>
+  request<FormationDetail>(`/formations/${id}`);
+
+export const createFormation = (body: NewFormation) =>
+  postJson<Formation>('/formations', body);
+
+export const updateFormation = (id: string, body: NewFormation) =>
+  putJson<Formation>(`/formations/${id}`, body);
+
+export const deleteFormation = (id: string, ownerId: string) =>
+  deleteOwned(`/formations/${id}`, ownerId);
 
 // ---------- компанії ----------
 
@@ -77,6 +219,8 @@ export type NewOrgNode = {
 };
 
 export type NewOffre = {
+  /** Лише в наявних пропозицій. */
+  id?: string;
   title: string;
   description?: string;
   type?: string;
@@ -92,6 +236,7 @@ export type NewCompany = {
   size?: string;
   foundedOn?: string;
   logoUrl?: string;
+  website?: string;
   ownerId: string;
   nodes?: NewOrgNode[];
   offres?: NewOffre[];
@@ -114,6 +259,7 @@ export type CompanyDetail = {
   region: string | null;
   size: string | null;
   logoUrl: string | null;
+  website: string | null;
   foundedOn: string | null;
   createdAt: string;
   owner: { email: string };
@@ -125,12 +271,19 @@ export type CompanyDetail = {
     contract: string | null;
     metier: string | null;
     region: string | null;
+    skills: string[];
   }[];
   orgCharts: { id: string; name: string; nodes: CompanyNode[] }[];
 };
 
 export const createCompany = (body: NewCompany) =>
   postJson<{ id: string; name: string }>('/companies', body);
+
+export const updateCompany = (id: string, body: NewCompany) =>
+  putJson<{ id: string; name: string }>(`/companies/${id}`, body);
+
+export const deleteCompany = (id: string, ownerId: string) =>
+  deleteOwned(`/companies/${id}`, ownerId);
 
 export const getCompany = (id: string) =>
   request<CompanyDetail>(`/companies/${id}`);
@@ -260,10 +413,13 @@ export const updateCv = (
 export const deleteCv = (id: string) =>
   request<{ id: string; title: string }>(`/cvs/${id}`, { method: 'DELETE' });
 
-export const listCompanies = (search?: string) =>
-  request<CompanyListItem[]>(
-    `/companies${search ? `?search=${encodeURIComponent(search)}` : ''}`,
-  );
+export function listCompanies(search?: string, ownerId?: string) {
+  const params = new URLSearchParams();
+  if (search) params.set('search', search);
+  if (ownerId) params.set('ownerId', ownerId);
+  const qs = params.toString();
+  return request<CompanyListItem[]>(`/companies${qs ? `?${qs}` : ''}`);
+}
 
 /** Віддає шлях на кшталт /files/<uuid>.png — його і кладемо в logoUrl. */
 export async function uploadFile(file: File) {

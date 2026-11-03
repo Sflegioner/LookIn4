@@ -19,10 +19,8 @@ const frDate = (iso: string) => new Date(iso).toLocaleDateString('fr-FR');
 
 export default function CVPage({
   session,
-  onBack,
 }: {
   session: { id: string; email: string };
-  onBack: () => void;
 }) {
   const [cv, setCv] = useState<CvDetail | null>(null);
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -126,17 +124,7 @@ export default function CVPage({
   if (!cv) {
     return (
       <section className="rounded-2xl border border-[rgb(128_128_128/0.25)] p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <h2 className="font-playfair text-2xl">Mon CV</h2>
-
-          <button
-            type="button"
-            onClick={onBack}
-            className="text-sm opacity-70 transition-opacity hover:opacity-100"
-          >
-            Retour
-          </button>
-        </div>
+        <h2 className="font-playfair text-2xl">Mon CV</h2>
 
         <p className="mt-6 text-sm opacity-60">
           Vous n&apos;avez pas encore de CV. Donnez-lui un titre pour commencer.
@@ -189,14 +177,6 @@ export default function CVPage({
           <h2 className="font-playfair text-3xl">{cv.title}</h2>
 
           <div className="flex shrink-0 items-center gap-4">
-            <button
-              type="button"
-              onClick={onBack}
-              className="text-sm opacity-70 transition-opacity hover:opacity-100"
-            >
-              Retour
-            </button>
-
             <button
               type="button"
               onClick={() => setConfirming(true)}
